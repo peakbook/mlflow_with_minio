@@ -1,0 +1,63 @@
+services: 
+  minio:
+    image: minio/minio
+    networks: 
+      - mlflow-network
+    working_dir: /storage
+    volumes:
+      - minio-volume:/storage
+    expose:
+      - ${MINIO_API_PORT}
+      - ${MINIO_UI_PORT}
+    ports:
+      - "${MINIO_API_PORT}:9000"
+      - "${MINIO_UI_PORT}:9001"
+    environment:
+      - MINIO_ROOT_USER=${S3_ACCESS_KEY_ID}
+      - MINIO_ROOT_PASSWORD=${S3_SECRET_ACCESS_KEY}
+    command: server /storage --console-address ":9001"
+  createbuckets:
+    image: minio/mc
+    networks: 
+      - mlflow-network
+    depends_on:
+      - minio
+    entrypoint: "/bin/sh -c"
+    command: >
+      "
+      until (/usr/bin/mc config host add myminio http://minio:9000 ${S3_ACCESS_KEY_ID} ${S3_SECRET_ACCESS_KEY} ) do echo 'waiting minio server...' && sleep 1; done;
+      /usr/bin/mc mb myminio/mlflow;
+      exit 0;
+      "
+  mlflow:
+    image: localhost/mlflow
+    networks: 
+      - mlflow-network
+    build: 
+      context: .
+      dockerfile: Containerfile
+    depends_on: 
+      - minio
+    volumes: 
+      - mlflow-volume:/mlflow
+    environment:
+      - MLFLOW_S3_ENDPOINT_URL=http://minio:${MINIO_API_PORT}
+      - AWS_ACCESS_KEY_ID=${S3_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${S3_SECRET_ACCESS_KEY}
+    expose: 
+      - "${MLFLOW_PORT}"
+    ports: 
+      - "${MLFLOW_PORT}:5000"
+    # https://mlflow.org/docs/latest/tracking.html#scenario-5-mlflow-tracking-server-enabled-with-proxied-artifact-storage-access
+    command: "server \
+              --backend-store-uri file:///mlflow/mlruns \
+              --host 0.0.0.0 \
+              --port 5000 \
+              --serve-artifacts \
+              --artifacts-destination s3://mlflow/ \
+              --default-artifact-root mlflow-artifacts:/"
+networks: 
+  mlflow-network:
+volumes:
+  minio-volume:
+  mlflow-volume:
