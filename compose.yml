@@ -16,18 +16,23 @@ services:
       - MINIO_ROOT_USER=${S3_ACCESS_KEY_ID}
       - MINIO_ROOT_PASSWORD=${S3_SECRET_ACCESS_KEY}
     command: server /storage --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 1s
+      timeout: 10s
+      retries: 5
   createbuckets:
     image: minio/mc
     networks: 
       - mlflow-network
     depends_on:
-      - minio
+      minio:
+        condition: service_healthy
     entrypoint: "/bin/sh -c"
     command: >
       "
-      until (/usr/bin/mc config host add myminio http://minio:9000 ${S3_ACCESS_KEY_ID} ${S3_SECRET_ACCESS_KEY} ) do echo 'waiting minio server...' && sleep 1; done;
-      /usr/bin/mc mb myminio/mlflow;
-      exit 0;
+      mc alias set myminio http://minio:9000 ${S3_ACCESS_KEY_ID} ${S3_SECRET_ACCESS_KEY};
+      mc mb myminio/mlflow;
       "
   mlflow:
     image: localhost/mlflow

@@ -1,8 +1,7 @@
 # MLflow with MinIO
 
 ## Requirements
-- Docker
-- docker-compose
+- Docker/Podman
 
 ## Usage
 
